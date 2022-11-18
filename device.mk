@@ -19,16 +19,12 @@ DEVICE_PATH := device/xiaomi/yunluo
 # Configure launch_with_vendor_ramdisk.mk
 $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota/launch_with_vendor_ramdisk.mk)
 
-# Configure emulated storage
-$(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
-
 # Soong Namespaces
 PRODUCT_SOONG_NAMESPACES += \
 	$(LOCAL_PATH)
 
 # API
 PRODUCT_SHIPPING_API_LEVEL := 31
-PRODUCT_TARGET_VNDK_VERSION := 31
 
 # Dynamic
 PRODUCT_USE_DYNAMIC_PARTITIONS := true
