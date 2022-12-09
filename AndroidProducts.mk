@@ -14,6 +14,6 @@
 # limitations under the License.
 #
 
-PRODUCT_MAKEFILES := $(LOCAL_DIR)/twrp_yunluo.mk
+PRODUCT_MAKEFILES := $(LOCAL_DIR)/twrp_t1030m.mk
 
-COMMON_LUNCH_CHOICES := twrp_yunluo-eng
+COMMON_LUNCH_CHOICES := twrp_t1030m-eng
