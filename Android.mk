@@ -16,6 +16,6 @@
 
 LOCAL_PATH := $(call my-dir)
 
-ifeq ($(TARGET_DEVICE),yunluo)
+ifeq ($(TARGET_DEVICE),t1030m)
 include $(call all-subdir-makefiles,$(LOCAL_PATH))
 endif
