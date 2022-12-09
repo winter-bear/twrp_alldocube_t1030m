@@ -1,75 +1,175 @@
-name: Building  recovery for t1030m
+name: Alldocube iPlay50 Pro - TWRP
 
 on:
-#  release:
-#    types: [published]
-#  push:
-#    branches:
-#      - master
-#    paths:
-#      - '.config'
-#  schedule:
-#    - cron: 0 8 * * 5
   workflow_dispatch:
-
-env:
-  MANIFEST: https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp
-  DEVICE: t1030m
-  DT_LINK: https://github.com/winter-bear/twrp_device_alldocube_t1030m
-  DT_PATH: device/alldocube/t1030m
-  TARGET: bootimage
-  TZ: Asia/manila
+    inputs:
+      MANIFEST_URL:
+        description: 'MANIFEST_URL'
+        required: true
+        default: 'https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git'
+      MANIFEST_BRANCH:
+        description: 'MANIFEST_BRANCH'
+        required: true
+        default: 'twrp-12.1'
+      DEVICE_TREE_URL:
+        description: 'DEVICE_TREE_URL'
+        required: true
+        default: 'https://github.com/winter-bear/twrp_alldocube_t1030m'
+      DEVICE_TREE_BRANCH:
+        description: 'DEVICE_TREE_BRANCH'
+        required: true
+        default: '12.1-test'
+      DEVICE_PATH:
+        description: 'DEVICE_PATH'
+        required: true
+        default: 'device/alldocube/t1030m'
+      DEVICE_NAME:
+        description: 'DEVICE_NAME'
+        required: true
+        default: 't1030m'
+      MAKEFILE_NAME:
+        description: 'MAKEFILE_NAME'
+        required: true
+        default: 'twrp_t1030m'
+      BUILD_TARGET:
+        description: 'BUILD_TARGET'
+        required: true
+        default: 'boot'
 
 jobs:
   build:
-    runs-on: ubuntu-18.04
-
+    if: github.event.repository.owner.id == github.event.sender.id
+    runs-on: ubuntu-20.04
+    # You can use either of the ubuntu-18.04 or ubuntu-20.04 runner
     steps:
-       - name: Checkout
-         uses: actions/checkout@master
+    - name: Display Run Parameters
+      run: |
+        echo "::group::User Environment Variables"
+        echo "Manifest URL: ${{ github.event.inputs.MANIFEST_URL }}"
+        echo "Manifest Branch: ${{ github.event.inputs.MANIFEST_BRANCH }}"
+        echo "Device Tree URL: ${{ github.event.inputs.DEVICE_TREE_URL }}"
+        echo "Device Tree Branch: ${{ github.event.inputs.DEVICE_TREE_BRANCH }}"
+        echo "Device Path: ${{ github.event.inputs.DEVICE_PATH }}"
+        echo "Device Name: ${{ github.event.inputs.DEVICE_NAME }}"
+        echo "Makefile Name: ${{ github.event.inputs.MAKEFILE_NAME }}"
+        echo "Build Target: ${{ github.event.inputs.BUILD_TARGET }}.img"
+        echo "::endgroup::"
+ 
+    - name: Check Out
+      uses: actions/checkout@v3.1.0
+
+    - name: Cleanup
+      uses: rokibhasansagar/slimhub_actions@main
+
+    - name: Set Swap Space
+      uses: pierotofy/set-swap-space@master
+      with:
+        swap-size-gb: 12
+
+    - name: Prepare the environment
+      run: |
+        sudo apt update
+        sudo apt -y upgrade
+        sudo apt -y install curl zip wget gperf gcc-multilib gcc-10-multilib g++-multilib g++-10-multilib libc6-dev lib32ncurses5-dev libncurses5 x11proto-core-dev libx11-dev tree lib32z-dev libgl1-mesa-dev libxml2-utils xsltproc bc ccache lib32readline-dev lib32z1-dev liblz4-tool libncurses5-dev libncurses5 libsdl1.2-dev libwxgtk3.0-gtk3-dev libxml2 lzop pngcrush schedtool squashfs-tools imagemagick libbz2-dev lzma ncftp qemu-user-static libstdc++-10-dev python
+
+    - name: Install OpenJDK
+      run: |
+        git clone https://github.com/cd-Spidey/Random.git ./opendjk
+        sudo bash opendjk/setup/packages/open_jdk.sh
+      
+    - name: Install Git-Repo
+      run: |
+        git config --global advice.detachedHead false
+        git clone https://android.googlesource.com/tools/repo -b v2.29 ~/bin
+        chmod a+x ~/bin/repo
+        sudo ln -sf ~/bin/repo /usr/bin/repo
+      
+    - name: Initialize Git-Repo
+      run: |
+        mkdir workspace
+        cd workspace
+        echo "workdir=$(pwd)" >> $GITHUB_OUTPUT
+        git config --global user.name "Carlo Dee"
+        git config --global user.email "carlodee.officail@gmail.com"
+        repo init --depth=1 -u ${{ github.event.inputs.MANIFEST_URL }} -b ${{ github.event.inputs.MANIFEST_BRANCH }}
+      id: pwd
+          
+    - name: Repo Sync
+      run: |
+        repo sync -j$(nproc --all) --force-sync
+      working-directory: workspace
+      
+    - name: Clone device tree
+      run: |
+        git clone ${{ github.event.inputs.DEVICE_TREE_URL }} -b ${{ github.event.inputs.DEVICE_TREE_BRANCH }} ./${{ github.event.inputs.DEVICE_PATH }}
+      working-directory: ${{ steps.pwd.outputs.workdir }}
+
+    - name: Check Build Tree
+      uses: haya14busa/action-cond@v1
+      id: buildtree
+      with:
+        cond: ${{ github.event.inputs.MANIFEST_BRANCH == 'twrp-11' || github.event.inputs.MANIFEST_BRANCH == 'twrp-12.1' }}
+        if_true: twrp
+        if_false: omni
+
+    - name: Sync Device Dependencies
+      run: |
+        bash ${GITHUB_WORKSPACE}/.github/workspace/convert.sh ${{ github.event.inputs.DEVICE_PATH }}/${{ steps.buildtree.outputs.value }}.dependencies
+        repo sync -j$(nproc --all)
+      working-directory: ${{ steps.pwd.outputs.pwd }}
+      continue-on-error: true
+
+    - name: Building recovery
+      run: |
+        source build/envsetup.sh
+        export ALLOW_MISSING_DEPENDENCIES=true
+        lunch ${{ github.event.inputs.MAKEFILE_NAME }}-eng && make clean && make ${{ github.event.inputs.BUILD_TARGET }}image -j$(nproc --all)
+      working-directory: ${{ steps.pwd.outputs.workdir }}
+
+    - name: Set Properties # Output will be use in final name of recovery.
+      id: props
+      run: |
+        echo "date=$(date +"%Y%m%d-%H%M")" >> $GITHUB_OUTPUT
+
+    - name: Renaming into TWRP
+      run: |
+        cd out/target/product/${{ github.event.inputs.DEVICE_NAME }}
+        mv ${{ github.event.inputs.BUILD_TARGET }}.img twrp-3.7.0_12.1-${{ github.event.inputs.DEVICE_NAME }}-${{ steps.props.outputs.date }}.img
+      working-directory: ${{ steps.pwd.outputs.workdir }}
+
+    - name: Upload to Release
+      uses: ncipollo/release-action@v1.11.1
+      with:
+        artifacts: |
+          workspace/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/twrp*.img
+        name: Unofficial TWRP for Alldocube iPlay50 Pro(t1030m) - Build ${{ steps.props.outputs.date }} 
+        draft: false
+        prerelease: true
+        token: ${{ secrets.GITHUB_TOKEN }}
+        tag: ${{ steps.props.outputs.date }}-${{ github.run_id }}
+        body: |
+          ## TWRP v3.7.0_12.1-t1030m-${{ steps.props.outputs.date }}
          
 
-       - name: Initializing environment
-         run: |
-            sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d
-            docker rmi `docker images -q`
-            sudo apt-get remove account-plugin-facebook account-plugin-flickr account-plugin-jabber account-plugin-salut account-plugin-twitter account-plugin-windows-live account-plugin-yahoo aisleriot brltty duplicity empathy empathy-common example-content gnome-accessibility-themes gnome-contacts gnome-mahjongg gnome-mines gnome-orca gnome-screensaver gnome-sudoku gnome-video-effects gnomine landscape-common libreoffice-avmedia-backend-gstreamer libreoffice-base-core libreoffice-calc libreoffice-common libreoffice-core libreoffice-draw libreoffice-gnome libreoffice-gtk libreoffice-impress libreoffice-math libreoffice-ogltrans libreoffice-pdfimport libreoffice-style-galaxy libreoffice-style-human libreoffice-writer libsane libsane-common mcp-account-manager-uoa python3-uno rhythmbox rhythmbox-plugins rhythmbox-plugin-zeitgeist sane-utils shotwell shotwell-common telepathy-gabble telepathy-haze telepathy-idle telepathy-indicator telepathy-logger telepathy-mission-control-5 telepathy-salut totem totem-common totem-plugins printer-driver-brlaser printer-driver-foo2zjs printer-driver-foo2zjs-common printer-driver-m2300w printer-driver-ptouch printer-driver-splix
-            git config --global user.name "mastersenpai05"
-            git config --global user.email "pampangavergil0405@gmail.com"         
-            sudo -E apt-get -y purge azure-cli ghc* zulu* hhvm llvm* firefox google* dotnet* powershell openjdk* mysql* php* 
-            sudo -E apt-get clean
-            sudo -E apt-get -qq update
-            sudo -E apt-get -qq install bc build-essential zip curl libstdc++6 git wget python gcc clang libssl-dev repo rsync flex curl  bison aria2
-            sudo curl --create-dirs -L -o /usr/local/bin/repo -O -L https://storage.googleapis.com/git-repo-downloads/repo
-            sudo chmod a+rx /usr/local/bin/repo
-            
-       - name: Sync recovery source and device tree
-         run: |
-          PATH=~/bin:$PATH
-          mkdir twrp
-          cd twrp
-          repo init -u $MANIFEST --depth=1
-          repo sync -c -j8 --force-sync --no-clone-bundle --no-tags
-          rm -rf .repo
-             
-       - name: Checkout device tree
-         uses: actions/checkout@v2
-         with:
-          path: twrp/device/alldocube/t1030m
-             
-       - name: Build
-         run: |
-              PATH=~/bin:$PATH
-              cd twrp
-              export ALLOW_MISSING_DEPENDENCIES=true && source build/envsetup.sh &&lunch twrp_t1030m-eng && mka $TARGET -j2
-              cp  out/target/product/t1030m/boot.img    out/target/product/t1030m/boot-t1030m-main-$(date +"%Y%m%d-%H%M").img  
-             
-       - name: Release recovery image
-         uses: softprops/action-gh-release@v1
-         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-         with:
-          tag_name: TWRP_11-main
-          name: main
-          files: | 
-            twrp/out/target/product/t1030m/boot*.img
+    - name: Github Release URL
+      run: |
+        echo "Printing your Release URL"
+        echo "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ steps.props.outputs.date }}-${{ github.run_id }}"
+
+    - name: Clone LDChecker
+      run: |
+        git clone https://github.com/cd-Spidey/Random ./ldcheck
+        cd ldcheck/extract-tools
+        mv -n qseecomd ${GITHUB_WORKSPACE}/workspace/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/recovery/root/system/bin/
+        mv -n libneeds ${GITHUB_WORKSPACE}/workspace/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/recovery/root/
+        mv -n ldcheck ${GITHUB_WORKSPACE}/workspace/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/recovery/root/
+        echo "Done moving essentials in checking missing dependencies."
+      continue-on-error: true
+
+    - name: Run LDCheck
+      run: |
+        cd workspace/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/recovery/root
+        python3 ldcheck -p system/lib64:vendor/lib64 -d system/bin/qseecomd
+        echo "Done checking missing dependencies. Review, and reconfigure your tree."
+      continue-on-error: true
+
