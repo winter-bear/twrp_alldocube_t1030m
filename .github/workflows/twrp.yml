@@ -61,7 +61,7 @@ jobs:
          run: |
               PATH=~/bin:$PATH
               cd twrp
-              export ALLOW_MISSING_DEPENDENCIES=true && source build/envsetup.sh &&lunch twrp_camellia-eng && mka $TARGET -j2
+              export ALLOW_MISSING_DEPENDENCIES=true && source build/envsetup.sh &&lunch twrp_t1030m-eng && mka $TARGET -j2
               cp  out/target/product/t1030m/boot.img    out/target/product/t1030m/boot-t1030m-main-$(date +"%Y%m%d-%H%M").img  
              
        - name: Release recovery image
