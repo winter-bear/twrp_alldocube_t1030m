@@ -34,7 +34,7 @@ on:
       BUILD_TARGET:
         description: 'BUILD_TARGET'
         required: true
-        default: 'boot'
+        default: 'vendorboot'
 
 jobs:
   build:
@@ -118,12 +118,7 @@ jobs:
         repo sync -j$(nproc --all)
       working-directory: ${{ steps.pwd.outputs.pwd }}
       continue-on-error: true
-      
-    - name: Copy kernel
-      run: |
-        cp ${GITHUB_WORKSPACE}/prebuilt/kernel  ${GITHUB_WORKSPACE}/out/target/product/${{ github.event.inputs.DEVICE_NAME }}/kernel
-      
-      
+            
 
     - name: Building recovery
       run: |
